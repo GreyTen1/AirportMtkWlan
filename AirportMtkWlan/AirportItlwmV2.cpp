@@ -1597,8 +1597,11 @@ void AirportItlwm::setPowerStateOn()
         pmPolicyMaker->acknowledgeSetPowerState();
 }
 
-__asm__(".globl __ZN23IO80211VirtualInterfaceC1EPK11OSMetaClass\n"
-        ".set __ZN23IO80211VirtualInterfaceC1EPK11OSMetaClass, __ZN23IO80211VirtualInterfaceC2EPK11OSMetaClass\n");
+extern "C" void _ZN23IO80211VirtualInterfaceC2EPK11OSMetaClass(void *, const OSMetaClass *);
+extern "C" void _ZN23IO80211VirtualInterfaceC1EPK11OSMetaClass(void *self, const OSMetaClass *meta)
+{
+    _ZN23IO80211VirtualInterfaceC2EPK11OSMetaClass(self, meta);
+}
 
 IO80211VirtualInterface* AirportItlwm::createVirtualInterface(ether_addr *ea, UInt role)
 {
