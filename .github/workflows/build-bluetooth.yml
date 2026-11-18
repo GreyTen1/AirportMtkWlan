@@ -1,0 +1,73 @@
+name: Build Bluetooth
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-bluetooth:
+    name: Build AirportMtkBt Kexts
+    runs-on: macos-15
+    steps:
+      - name: Checkout repository (with MacKernelSDK submodule)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Toolchain info
+        run: |
+          xcodebuild -version
+          clang --version | head -1
+
+      - name: Build Bluetooth kexts
+        run: ./bluetooth/build-bluetooth.sh
+
+      - name: Verify kext bundles
+        run: |
+          otool="$(xcrun -f otool)"
+          nm_tool="$(xcrun -f nm)"
+          for kext in AirportMtkBtFw AirportMtkBtPatcher; do
+            bundle="build/Release/${kext}.kext"
+            bin="$bundle/Contents/MacOS/${kext}"
+            plutil -lint -s "$bundle/Contents/Info.plist"
+            "$otool" -hv "$bin" | grep -q KEXTBUNDLE || { echo "${kext} is not a KEXTBUNDLE" >&2; exit 1; }
+            syms="$("$nm_tool" "$bin")"
+            for sym in _kmod_info __realmain __antimain; do
+              grep -q " $sym\$" <<<"$syms" || { echo "${kext} missing $sym" >&2; exit 1; }
+            done
+          done
+
+      - name: Package artifacts
+        run: |
+          mkdir -p dist
+          ditto -c -k --sequesterRsrc --keepParent \
+            build/Release/AirportMtkBtFw.kext \
+            dist/AirportMtkBtFw.kext.zip
+          ditto -c -k --sequesterRsrc --keepParent \
+            build/Release/AirportMtkBtPatcher.kext \
+            dist/AirportMtkBtPatcher.kext.zip
+          mkdir -p build/Release/AirportMtkBt-Bundle
+          cp -R build/Release/AirportMtkBtFw.kext build/Release/AirportMtkBtPatcher.kext build/Release/AirportMtkBt-Bundle/
+          ditto -c -k --sequesterRsrc \
+            build/Release/AirportMtkBt-Bundle \
+            dist/AirportMtkBt-RELEASE.zip
+          (cd dist && shasum -a 256 *.zip > SHA256SUMS.txt)
+          ls -lh dist
+
+      - name: Upload Bluetooth artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: AirportMtkBt-${{ github.sha }}
+          path: |
+            dist/AirportMtkBtFw.kext.zip
+            dist/AirportMtkBtPatcher.kext.zip
+            dist/AirportMtkBt-RELEASE.zip
+            dist/SHA256SUMS.txt
+            build/Release/AirportMtkBtFw.kext
+            build/Release/AirportMtkBtPatcher.kext
